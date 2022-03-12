@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: App Runner Template for Python RestApi
+
+Parameters:
+  PythonAPIPort:
+    Type: Number
+    Description: The Port that Python API listening on
+    Default: 5000
+    AllowedValues:
+      - 5000
+      - 5001
+      - 5002
+  ContainerImage:
+    Type: String
+    Description: container image
+  Environment:
+    Type: String
+    Description: Environment to Deploy
+    Default: dev
+  WelcomeMessage:
+    Type: String
+    Description: Welcome Message for the API
+  ImageRepositoryType:
+    Type: String
+    Description: Type of the repository
+    Default: ECR
+
+Conditions:
+  NeedsAccessRole:
+    !Equals [!Ref ImageRepositoryType, 'ECR']
+
+Resources:
+  AccessRole:
+    Type: AWS::IAM::Role
+    Condition: NeedsAccessRole
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2008-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+  
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: 'sts:AssumeRole'
+
+  PythonRestAPI:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: !Sub RESTAPI-${Environment}
+      SourceConfiguration:
+        AuthenticationConfiguration: !If
+          - NeedsAccessRole
+          - AccessRoleArn: !GetAtt AccessRole.Arn
+          - !Ref AWS::NoValue
+        AutoDeploymentsEnabled: true
+        ImageRepository:
+          ImageIdentifier: !Ref ContainerImage
+          ImageRepositoryType: !Ref ImageRepositoryType
+          ImageConfiguration:
+            Port: !Ref PythonAPIPort
+            RuntimeEnvironmentVariables:
+              - Name: API_WORKS_MESSAGE
+                Value: !Ref WelcomeMessage
+      InstanceConfiguration:
+        Cpu: 1 vCPU
+        Memory: 2 GB
+      Tags:
+        - Key: environment
+          Value: !Ref Environment
+        
+Outputs:
+  AppRunnerServiceArn:
+    Description: ServiceArn of GitHub
+    Value: !GetAtt PythonRestAPI.ServiceArn
+  AppRunnerServiceId:
+    Description: AppRunnerServiceId
+    Value: !GetAtt PythonRestAPI.ServiceId
+  AppRunnerServiceUrl:
+    Description: AppRunnerServiceUrl
+    Value: !GetAtt PythonRestAPI.ServiceUrl
